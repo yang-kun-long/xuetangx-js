@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学堂在线视频自动学习面板脚本
 // @namespace    http://tampermonkey.net/
-// @version      1.5
+// @version      1.6
 // @license      MIT
 // @description  为学堂在线(xuetangx.com/learn/)提供一个操作面板，只播放左侧“饼图未满”的章节；自动 2.0 倍速、静音、循环播放，直到饼图满再跳下一节。
 // @author       Yangkunlong + ChatGPT
@@ -20,6 +20,8 @@
     var dragElement;                // 操作面板 DOM
     var replayCountMap = {};        // 每节的重播次数，防止死循环
     var isCheckingProgress = false; // 防止重复触发当前节的进度检查
+    var pendingCheckIndex = null;   // 记录哪一节需要在切章后检查饼图
+    var isRefreshingPie = false;    // 正在“切章刷新饼图”的过程中，避免重复触发
 
     // --- UI/操作面板 相关函数 ---
 
@@ -381,85 +383,141 @@
         var percentText = (ratio * 100).toFixed(2) + "%";
 
         if (ratio > 0.99) {
-            if (isCheckingProgress) return;
-            isCheckingProgress = true;
+            if (isRefreshingPie) return;   // 正在刷新时不重复触发
+            isRefreshingPie = true;
+            pendingCheckIndex = index;
 
-            console.log("本节视频已看完，观看百分比：" + percentText + "，准备检查小饼图进度...");
-            logStatus("本节视频已看完（" + percentText + "），正在检查左侧饼图是否已满...");
-            checkProgressAndMaybeGotoNext(video);
+            console.log("本节视频已看完，观看百分比：" + percentText + "，准备切换章节刷新饼图...");
+            logStatus("本节视频已看完（" + percentText + "），先切到其他章节刷新饼图再检查是否完成。");
+
+            // 切到其它章节触发更新
+            switchChapterForPieRefresh();
+
         } else {
             console.log("视频正在播放中... 进度: " + percentText);
         }
     }
-
     /**
-     * 检查当前章节的小饼图是否满，如果没满就重播当前视频
+     * 为了刷新当前章节的饼图：临时切换到别的章节
      */
-    function checkProgressAndMaybeGotoNext(video) {
-        // 给一点时间让页面刷新进度（如有异步更新）
+    function switchChapterForPieRefresh() {
+        lists = document.getElementsByClassName("third");
+
+        var jumpIndex = -1;
+        if (lists.length > 1) {
+            if (index + 1 < lists.length) {
+                jumpIndex = index + 1;
+            } else if (index - 1 >= 0) {
+                jumpIndex = index - 1;
+            }
+        }
+
+        if (jumpIndex === -1) {
+            // 只有一节课，没得切章，那就直接按原逻辑检查
+            logStatus("只有一个章节，无法切章刷新饼图，直接检查当前章节饼图。");
+            checkProgressAndMaybeGotoNext(null); // video 可选
+            return;
+        }
+
+        var list = lists[jumpIndex];
+        var lis = list.getElementsByTagName("li");
+        if (lis.length > 0) {
+            lis[0].click();
+            console.log("为刷新饼图，临时切到章节 #" + jumpIndex);
+            logStatus("为刷新饼图，暂时切到章节 #" + jumpIndex + "。");
+        }
+
+        // 给后台一点时间刷新进度，之后再去检查 pendingCheckIndex 那节的饼图
         setTimeout(function() {
-            lists = document.getElementsByClassName("third");
-
-            var currentList = lists[index];
-            if (!currentList) {
-                console.log("找不到当前章节节点，跳到下一个未完成章节。");
-                logStatus("找不到当前章节节点，跳到下一个未完成章节。");
-                isCheckingProgress = false;
-                gotoNextUnfinished(index);
-                return;
-            }
-
-            var lis = currentList.getElementsByTagName("li");
-            if (lis.length === 0) {
-                console.log("当前章节下没有 li，跳到下一个未完成章节。");
-                logStatus("当前章节没有 li 节点，跳到下一个未完成章节。");
-                isCheckingProgress = false;
-                gotoNextUnfinished(index);
-                return;
-            }
-
-            var currentLi = lis[0];
-
-            // 检查是否有满进度的 icon
-            var fullIcon = currentLi.querySelector(".percentFull");
-
-            if (fullIcon) {
-                console.log("检测到当前章节饼图已满，跳转到下一个未完成章节。");
-                logStatus("当前章节已被标记为“已完成”，跳到下一个未完成章节。");
-                replayCountMap[index] = 0;
-                isCheckingProgress = false;
-                gotoNextUnfinished(index);
-            } else {
-                // 没有 percentFull，说明这节没被认定看完，再播一遍
-                replayCountMap[index] = (replayCountMap[index] || 0) + 1;
-                console.log("当前章节饼图未满，第 " + replayCountMap[index] + " 次重播当前章节。");
-                logStatus("当前章节饼图未满，第 " + replayCountMap[index] + " 次重播当前章节。");
-
-                // 防止死循环（如该节需要做题等，不只是看视频）
-                if (replayCountMap[index] > 3) {
-                    console.log("本章节重复播放超过 3 次仍未满，可能需要作答/手动操作，跳到下一个未完成章节。");
-                    logStatus("本章节重播超过 3 次仍未完成，可能需要答题/手动操作，跳到下一个未完成章节。");
-                    isCheckingProgress = false;
-                    gotoNextUnfinished(index);
-                    return;
-                }
-
-                if (video) {
-                    video.currentTime = 0;
-                    video.play().catch(function(error) {
-                        console.log("重播当前视频失败，可能需要用户交互，错误类型:", error.name);
-                        logStatus("重播当前视频失败，可能需要你手动点一下播放。");
-                    });
-                } else {
-                    console.log("重播失败：未找到视频元素，跳到下一个未完成章节。");
-                    logStatus("未找到视频元素，跳到下一个未完成章节。");
-                    gotoNextUnfinished(index);
-                }
-
-                isCheckingProgress = false;
-            }
+            checkProgressAndMaybeGotoNext(null);  // 之后统一在这里决定是重播还是下一节
         }, 3000);
     }
+
+    /**
+     * 在“切到其它章节刷新饼图”之后，检查 pendingCheckIndex 那节的饼图
+     * 如果饼图满 → 跳到下一未完成章节
+     * 如果没满   → 切回去重播 pendingCheckIndex
+     */
+    function checkProgressAndMaybeGotoNext(video) {
+        isCheckingProgress = false; // 老逻辑的标记可以顺便清掉
+        lists = document.getElementsByClassName("third");
+
+        if (pendingCheckIndex == null) {
+            isRefreshingPie = false;
+            logStatus("没有 pendingCheckIndex，跳过饼图检查。");
+            return;
+        }
+
+        var currentList = lists[pendingCheckIndex];
+        if (!currentList) {
+            console.log("找不到 pending 章节节点，跳到下一个未完成章节。");
+            logStatus("找不到 pending 章节节点，跳到下一个未完成章节。");
+            isRefreshingPie = false;
+            gotoNextUnfinished(pendingCheckIndex);
+            pendingCheckIndex = null;
+            return;
+        }
+
+        var lis = currentList.getElementsByTagName("li");
+        if (lis.length === 0) {
+            console.log("pending 章节没有 li，跳到下一个未完成章节。");
+            logStatus("pending 章节没有 li，跳到下一个未完成章节。");
+            isRefreshingPie = false;
+            gotoNextUnfinished(pendingCheckIndex);
+            pendingCheckIndex = null;
+            return;
+        }
+
+        var currentLi = lis[0];
+        var fullIcon = currentLi.querySelector(".percentFull");
+
+        if (fullIcon) {
+            console.log("切章后检测到章节 #" + pendingCheckIndex + " 饼图已满，跳到下一个未完成章节。");
+            logStatus("章节 #" + pendingCheckIndex + " 饼图已满，跳到下一个未完成章节。");
+            replayCountMap[pendingCheckIndex] = 0;
+            isRefreshingPie = false;
+            var baseIndex = pendingCheckIndex;
+            pendingCheckIndex = null;
+            gotoNextUnfinished(baseIndex);
+        } else {
+            // 饼图仍未满 → 再看一遍 pending 这节
+            replayCountMap[pendingCheckIndex] = (replayCountMap[pendingCheckIndex] || 0) + 1;
+            console.log("章节 #" + pendingCheckIndex + " 饼图仍未满，第 " + replayCountMap[pendingCheckIndex] + " 次重播。");
+            logStatus("章节 #" + pendingCheckIndex + " 饼图仍未满，第 " + replayCountMap[pendingCheckIndex] + " 次重播。");
+
+            if (replayCountMap[pendingCheckIndex] > 3) {
+                console.log("本章节重播超过 3 次仍未满，跳到下一个未完成章节。");
+                logStatus("本章节重播超过 3 次仍未满，可能需要答题/手动操作，跳到下一个未完成章节。");
+                var baseIndex2 = pendingCheckIndex;
+                pendingCheckIndex = null;
+                isRefreshingPie = false;
+                gotoNextUnfinished(baseIndex2);
+                return;
+            }
+
+            // 切回 pending 那节重新播放
+            index = pendingCheckIndex;
+            pendingCheckIndex = null;
+            isRefreshingPie = false;
+
+            currentLi.click();  // 再次进入该章节
+
+            // 重播：等一点点时间，重新拿 video，start()
+            setTimeout(function() {
+                var videos = document.getElementsByClassName("xt_video_player");
+                var v = videos.length > 0 ? videos[0] : null;
+                if (v) {
+                    v.currentTime = 0;
+                    v.play().catch(function(err) {
+                        console.log("重播当前视频失败：", err.name);
+                        logStatus("重播当前视频失败，可能需要你手动点一下播放。");
+                    });
+                }
+                start(); // 重新启动定时检查
+            }, 1000);
+        }
+    }
+
 
     /**
      * 关闭视频声音 (通过点击 UI 按钮)
