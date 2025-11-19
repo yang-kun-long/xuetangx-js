@@ -22,20 +22,20 @@
 
 ### 步骤 2: 安装脚本
 
-点击下方链接，Tampermonkey 将会自动提示安装脚本：
+点击下方链接，Tampermonkey 将会自动提示安装脚本。
 
-**▶️ [点击安装 xuetangx-autolearn.user.js](userscripts/xuetangx-autolearn.user.js)**
+**▶️ [点击安装 xuetangx-autolearn.user.js](https://raw.githubusercontent.com/yang-kun-long/xuetangx-js/main/userscripts/xuetangx-autolearn.user.js)**
 
 ## 🚀 使用说明
 
-1.  打开任意一个学堂在线的视频学习页面（URL 以 `https://www.xuetangx.com/learn/` 开头）。
-2.  页面加载完成后，您将在右侧看到一个**浮动的操作面板**。
-3.  在面板中，确认脚本已正确识别章节列表和数量。
-4.  在“选择起始章节”下拉框中，选择您想要开始学习的章节。
-5.  点击 **“▶️ 从所选章节开始自动学习”** 按钮。
-6.  脚本将开始运行，自动完成播放、倍速设置、静音和章节跳转。
+1.  打开任意一个学堂在线的视频学习页面（URL 以 `https://www.xuetangx.com/learn/` 开头）。
+2.  页面加载完成后，您将在右侧看到一个**浮动的操作面板**。
+3.  在面板中，确认脚本已正确识别章节列表和数量。
+4.  在“选择起始章节”下拉框中，选择您想要开始学习的章节。
+5.  点击 **“▶️ 从所选章节开始自动学习”** 按钮。
+6.  脚本将开始运行，自动完成播放、倍速设置、静音和章节跳转。
 
 ---
 ## 📄 许可证
 
-本项目遵循 MIT 许可证。详见 [LICENSE]((https://github.com/yang-kun-long/xuetangx-js?tab=MIT-1-ov-file)E) 文件。
+本项目遵循 MIT 许可证。详见 **[LICENSE 文件](https://github.com/yang-kun-long/xuetangx-js/blob/main/LICENSE)**
