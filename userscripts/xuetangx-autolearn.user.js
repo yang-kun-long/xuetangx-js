@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学堂在线视频自动学习面板脚本
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      1.6.1
 // @license      MIT
 // @description  为学堂在线(xuetangx.com/learn/)提供一个操作面板，只播放左侧“饼图未满”的章节；自动 2.0 倍速、静音、循环播放，直到饼图满再跳下一节。
 // @author       Yangkunlong + ChatGPT
@@ -485,15 +485,15 @@
             console.log("章节 #" + pendingCheckIndex + " 饼图仍未满，第 " + replayCountMap[pendingCheckIndex] + " 次重播。");
             logStatus("章节 #" + pendingCheckIndex + " 饼图仍未满，第 " + replayCountMap[pendingCheckIndex] + " 次重播。");
 
-            if (replayCountMap[pendingCheckIndex] > 3) {
-                console.log("本章节重播超过 3 次仍未满，跳到下一个未完成章节。");
-                logStatus("本章节重播超过 3 次仍未满，可能需要答题/手动操作，跳到下一个未完成章节。");
-                var baseIndex2 = pendingCheckIndex;
-                pendingCheckIndex = null;
-                isRefreshingPie = false;
-                gotoNextUnfinished(baseIndex2);
-                return;
-            }
+            // if (replayCountMap[pendingCheckIndex] > 3) {
+            //     console.log("本章节重播超过 3 次仍未满，跳到下一个未完成章节。");
+            //     logStatus("本章节重播超过 3 次仍未满，可能需要答题/手动操作，跳到下一个未完成章节。");
+            //     var baseIndex2 = pendingCheckIndex;
+            //     pendingCheckIndex = null;
+            //     isRefreshingPie = false;
+            //     gotoNextUnfinished(baseIndex2);
+            //     return;
+            // }
 
             // 切回 pending 那节重新播放
             index = pendingCheckIndex;
