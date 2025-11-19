@@ -67,7 +67,7 @@
         // HTML 结构
         const panelHTML = `
             <div id="gemini-panel-header">
-                🚀 学堂在线自动学习面板 (v1.2)
+                🚀 学堂在线自动学习面板
             </div>
             <div style="padding: 10px;">
                 <p><strong>已识别章节数: </strong><span id="video-count">加载中...</span></p>
