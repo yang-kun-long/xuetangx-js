@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         学堂在线视频自动学习面板脚本 
+// @name         学堂在线视频自动学习面板脚本
 // @namespace    http://tampermonkey.net/
 // @version      1.3
-// @license MIT
+// @license      MIT
 // @description  为学堂在线(xuetangx.com/learn/)提供一个操作面板，可识别视频数量，选择起始章节，并强制自动播放/2.0倍速/静音/跳转。
 // @author       Yangkunlong
 // @match        *://www.xuetangx.com/learn/*
