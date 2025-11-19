@@ -1,41 +1,101 @@
 # 🎓 学堂在线 (XuetangX) 视频自动学习脚本
 
-这是一个专为 [学堂在线](https://www.xuetangx.com/) 平台设计的 Tampermonkey（油猴）脚本，用于自动化视频学习过程，解放您的双手。
+这是一个专为 [学堂在线](https://www.xuetangx.com/) 平台设计的 Tampermonkey（油猴）脚本，用于自动化视频学习过程，智能管理进度，解放您的双手。
 
-## 🌟 功能特性
+---
 
-* **操作面板：** 提供浮动控制面板，可拖动，显示课程章节列表。
-* **起始章节选择：** 允许用户手动选择从哪个章节开始播放。
-* **自动播放：** 强制调用 `video.play()` 确保视频不会暂停（需注意浏览器限制）。
-* **2.0 倍速：** 强制设置视频播放速度为 2.0x。
-* **自动静音：** 自动将视频设置为静音状态。
-* **自动跳转：** 当视频播放进度达到 **95%** 时，自动跳转到下一章节。
+## 🌟 主要功能（全新强化版）
+
+### 🔍 智能识别“未完成”章节
+
+脚本会自动扫描左侧章节列表，仅挑选**饼图未满（未学完）**的章节加入播放列表。
+
+### 📊 自动刷新饼图进度（独家）
+
+学堂在线只有在“切换章节”时才会刷新饼图进度，因此脚本实现了：
+
+> 视频看完 → 自动跳到下一章刷新饼图 → 再判断是否完成 → 决定是否重播或继续
+
+确保真正拿到平台认可的“学习完成”。
+
+### 🔁 自动重播未满章节
+
+如果视频看完后饼图仍未满，脚本会自动回到该章节重新播放（最多 3 次）。
+
+### 🎬 自动播放控制
+
+* 强制 2.0 倍速
+* 自动静音
+* 自动恢复播放（防止平台暂停）
+
+### ▶️ 智能自动跳转
+
+当某章节饼图被系统更新为“满”，脚本会自动跳到下一节未完成的章节，直到全部学完。
+
+### 🧭 浮动操作面板
+
+页面右侧会出现一个可拖动的小面板，展示：
+
+* 当前章节
+* 剩余未完成章节列表
+* 自动学习状态日志
+* 起始章节选择
+* 启动按钮
+
+---
 
 ## 📥 安装方法
 
-### 步骤 1: 安装油猴管理器
+### 1. 安装油猴扩展
 
-请确保您的浏览器已安装以下扩展之一：
+确保已安装以下任一扩展：
 
-* [Tampermonkey (推荐)](https://www.tampermonkey.net/)
-* [Violentmonkey](https://violentmonkey.github.io/)
+* **Tampermonkey (推荐)**
+  [https://www.tampermonkey.net/](https://www.tampermonkey.net/)
 
-### 步骤 2: 安装脚本
+* Violentmonkey
+  [https://violentmonkey.github.io/](https://violentmonkey.github.io/)
 
-点击下方链接，Tampermonkey 将会自动提示安装脚本。
+### 2. 安装脚本
 
-**▶️ [点击安装 xuetangx-autolearn.user.js](https://raw.githubusercontent.com/yang-kun-long/xuetangx-js/main/userscripts/xuetangx-autolearn.user.js)**
+点击下方链接即可自动安装：
 
-## 🚀 使用说明
-
-1.  打开任意一个学堂在线的视频学习页面（URL 以 `https://www.xuetangx.com/learn/` 开头）。
-2.  页面加载完成后，您将在右侧看到一个**浮动的操作面板**。
-3.  在面板中，确认脚本已正确识别章节列表和数量。
-4.  在“选择起始章节”下拉框中，选择您想要开始学习的章节。
-5.  点击 **“▶️ 从所选章节开始自动学习”** 按钮。
-6.  脚本将开始运行，自动完成播放、倍速设置、静音和章节跳转。
+### ▶️ **[点击安装 xuetangx-autolearn.user.js](https://raw.githubusercontent.com/yang-kun-long/xuetangx-js/main/userscripts/xuetangx-autolearn.user.js)**
 
 ---
-## 📄 许可证
 
-本项目遵循 MIT 许可证。详见 **[LICENSE 文件](https://github.com/yang-kun-long/xuetangx-js/blob/main/LICENSE)**
+## 🚀 使用说明（新逻辑）
+
+1. 打开任意学堂在线视频学习页面（URL 以 `/learn/` 开头）。
+2. 右侧会出现一个浮动操作面板。
+3. 脚本会自动识别所有章节并过滤出 **未完成章节**。
+4. 在下拉框选择从哪一节开始。
+5. 点击 **“▶️ 从所选章节开始自动学习”**。
+6. 脚本将自动：
+
+   * 加载本章节视频
+   * 自动倍速、静音、自动播放
+   * 播放到 99% 时自动切到其他章节刷新饼图
+   * 检测饼图是否满
+   * 不满则自动回到本章重播
+   * 满则进入下一个未完成章节
+
+🎉 一直到所有章节全部显示饼图满为止。
+
+---
+
+## ⚠️ 注意事项
+
+* 浏览器可能阻止自动播放，需要您**第一次手动点一下播放**，之后脚本即可自动播放。
+* 若某些章节包含测验，则饼图无法通过播放获得完成度，需要手动完成测验后再继续。
+* 如遇到平台页面结构更新，请提交 issue 反馈。
+
+---
+
+## 📄 许可证 License
+
+本项目遵循 **MIT License**
+详情参见：
+[https://github.com/yang-kun-long/xuetangx-js/blob/main/LICENSE](https://github.com/yang-kun-long/xuetangx-js/blob/main/LICENSE)
+
+---
