@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         学堂在线视频自动学习面板脚本
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @license      MIT
-// @description  为学堂在线(xuetangx.com/learn/)提供一个操作面板，可识别视频数量，选择起始章节，并强制自动播放/2.0倍速/静音/跳转。
-// @author       Yangkunlong
+// @description  为学堂在线(xuetangx.com/learn/)提供一个操作面板，可识别视频数量，选择起始章节，并强制自动播放/2.0倍速/静音/跳转；通过左侧小饼图判断是否完成，未满则自动重播。
+// @author       Yangkunlong + ChatGPT
 // @match        *://www.xuetangx.com/learn/*
 // @grant        none
 // @run-at       document-idle
@@ -16,9 +16,10 @@
     // --- 全局变量 ---
     var index = 0;
     var runIt;
-    var lists; // 存储所有章节列表元素
-    var dragElement; // 存储操作面板的DOM元素
-
+    var lists;                // 存储所有章节列表元素（class="third"）
+    var dragElement;          // 存储操作面板的DOM元素
+    var replayCountMap = {};  // 每节的重播次数，防止死循环
+    var isCheckingProgress = false; // 防止重复触发当前节的进度检查
 
     // --- UI/操作面板 相关函数 ---
 
@@ -32,7 +33,7 @@
                 position: fixed;
                 top: 100px;
                 right: 20px;
-                width: 300px;
+                width: 320px;
                 background-color: #fff;
                 border: 1px solid #ccc;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.3);
@@ -40,6 +41,7 @@
                 font-family: 'Microsoft YaHei', Arial, sans-serif;
                 border-radius: 8px;
                 overflow: hidden;
+                font-size: 13px;
             }
             #gemini-panel-header {
                 cursor: move;
@@ -48,7 +50,7 @@
                 padding: 10px;
                 border-bottom: 1px solid #0056b3;
                 font-weight: bold;
-                user-select: none; /* 防止拖动时选中文字 */
+                user-select: none;
             }
             #gemini-automation-panel button {
                 transition: background-color 0.3s;
@@ -79,8 +81,15 @@
                     ▶️ 从所选章节开始自动学习
                 </button>
                 <p style="margin-top: 10px; font-size: 12px; color: #666; text-align: center;">
-                    * 脚本自动设置 2.0 倍速，静音，并自动跳转 (5秒检查一次)。
+                    * 自动 2.0 倍速、静音，每 5 秒检查一次进度。饼图未满则自动重播本节。
                 </p>
+
+                <div id="gemini-status"
+                    style="margin-top: 8px; font-size: 12px; color: #333;
+                           background: #f8f9fa; border-radius: 4px; padding: 6px;
+                           max-height: 140px; overflow-y: auto; white-space: pre-line; border: 1px solid #e1e4e8;">
+                    等待启动...
+                </div>
             </div>
         `;
 
@@ -93,6 +102,27 @@
         makeDraggable(panel);
 
         return panel;
+    }
+
+    /**
+     * 将状态信息输出到面板上的状态框
+     * @param {string} msg - 要显示的文本
+     */
+    function logStatus(msg) {
+        var box = document.getElementById("gemini-status");
+        if (!box) return;
+
+        var time = new Date().toLocaleTimeString();
+        var line = "[" + time + "] " + msg;
+
+        if (box.textContent && box.textContent.trim() !== "") {
+            box.textContent += "\n" + line;
+        } else {
+            box.textContent = line;
+        }
+
+        // 自动滚动到底部
+        box.scrollTop = box.scrollHeight;
     }
 
     /**
@@ -109,7 +139,6 @@
         function dragMouseDown(e) {
             e = e || window.event;
             e.preventDefault();
-            // 获取鼠标光标的初始位置
             pos3 = e.clientX;
             pos4 = e.clientY;
             document.onmouseup = closeDragElement;
@@ -119,12 +148,10 @@
         function elementDrag(e) {
             e = e || window.event;
             e.preventDefault();
-            // 计算新的光标位置
             pos1 = pos3 - e.clientX;
             pos2 = pos4 - e.clientY;
             pos3 = e.clientX;
             pos4 = e.clientY;
-            // 设置元素的新位置，并确保不超出窗口
             element.style.top = (element.offsetTop - pos2) + "px";
             element.style.left = (element.offsetLeft - pos1) + "px";
         }
@@ -139,7 +166,6 @@
      * 填充选择框并绑定事件
      */
     function populatePanel() {
-        // 使用 try...catch 确保即使元素未找到也不会中断脚本
         try {
             lists = document.getElementsByClassName("third");
 
@@ -148,23 +174,24 @@
             const startButton = document.getElementById("start-automation");
 
             if (lists.length === 0) {
-                videoCountSpan.innerText = "0 (未找到章节，请检查类名'third')";
+                videoCountSpan.innerText = "0 (未找到章节，请检查类名 'third')";
+                logStatus("未找到任何章节元素，可能页面结构有变化。");
                 startSelect.innerHTML = '<option value="-1">未找到视频列表</option>';
                 startButton.disabled = true;
                 return;
             }
 
             videoCountSpan.innerText = lists.length;
-            startSelect.innerHTML = ''; // 清空选项
+            startSelect.innerHTML = '';
+            logStatus("已识别到 " + lists.length + " 个章节。");
 
             // 填充选择框
-            for(let i = 0; i < lists.length; i++){
+            for (let i = 0; i < lists.length; i++) {
                 const temp = lists[i].getElementsByTagName("li");
                 let titleText = "无法获取标题";
 
                 if (temp.length > 0) {
                     const titleSpan = temp[0].getElementsByTagName("span");
-                    // 尝试获取标题，如果获取不到则保持默认
                     titleText = titleSpan.length > 0 ? titleSpan[0].innerText.trim() : "无标题";
                 }
 
@@ -179,17 +206,19 @@
                 const selectedIndex = parseInt(startSelect.value);
                 if (!isNaN(selectedIndex) && selectedIndex >= 0) {
                     console.log(`用户选择从章节 #${selectedIndex} 开始。`);
-                    window.clearInterval(runIt); // 清除旧的定时器
-                    startNum(selectedIndex); // 从选定章节开始运行
+                    logStatus("开始自动学习，从章节 #" + selectedIndex + " 开始。");
+                    window.clearInterval(runIt);
+                    index = selectedIndex;
+                    startNum(selectedIndex);
                 } else {
                     alert("请选择一个有效的起始章节！");
                 }
             };
         } catch (e) {
             console.error("面板初始化失败:", e);
+            logStatus("面板初始化失败：" + e.message);
         }
     }
-
 
     // --- 核心自动化逻辑函数 ---
 
@@ -197,11 +226,12 @@
      * 根据索引启动某个章节的播放 (模拟点击)
      * @param {number} num - 章节索引
      */
-    function startNum(num){
+    function startNum(num) {
         lists = document.getElementsByClassName("third");
 
         if (num >= lists.length) {
             console.log("所有章节播放完毕！脚本停止。");
+            logStatus("所有章节播放完毕，脚本停止。");
             window.clearInterval(runIt);
             alert("所有章节播放完毕！");
             return;
@@ -212,24 +242,25 @@
         var temp = currentList.getElementsByTagName("li");
 
         if (temp.length > 0) {
-            // 模拟点击章节/视频链接
             temp[0].click();
 
             var titleSpan = temp[0].getElementsByTagName("span");
             var titleText = titleSpan.length > 0 ? titleSpan[0].innerText.trim() : "无标题";
 
             console.log("当前章节编号：" + index + ", 章节标题：" + titleText);
+            logStatus("正在播放章节 #" + index + " - " + titleText);
             start();
         } else {
             console.log("章节 #" + index + " 中未找到 'li' 元素。尝试跳过。");
-            setTimeout(() => startNum(++index), 1000); // 延迟1秒尝试跳到下一节
+            logStatus("章节 #" + index + " 没有有效视频节点，尝试跳到下一节。");
+            setTimeout(function() { startNum(++index); }, 1000);
         }
     }
 
     /**
      * 开始/设置定时器检查进度
      */
-    function start(){
+    function start() {
         console.log("播放检查/启动----");
         window.clearInterval(runIt);
         runIt = setInterval(next, 5000); // 每5秒检查一次
@@ -238,13 +269,14 @@
     /**
      * 定时器触发函数：检查播放进度，进行下一节跳转
      */
-    function next(){
+    function next() {
         var videos = document.getElementsByClassName("xt_video_player");
         var video = videos.length > 0 ? videos[0] : undefined;
 
         // --- 视频播放器不存在，可能是作业或讨论 ---
-        if(video === undefined){
-            console.log("未找到视频播放器，可能是作业/讨论，5秒后跳转下一个视频，下一节编号：" + (index + 1));
+        if (video === undefined) {
+            console.log("未找到视频播放器，可能是作业/讨论，跳转下一个章节：" + (index + 1));
+            logStatus("当前章节不是视频（可能是作业/讨论），跳到下一节 #" + (index + 1) + "。");
             startNum(++index);
             return;
         }
@@ -254,62 +286,137 @@
 
         // 视频时长无效或仍在加载中
         if (!isFinite(d) || d < 1) {
-             console.log("视频时长无效或仍在加载中，等待视频加载...");
-
-             // 尝试强制播放，可能在加载完成后生效
-             if (video.paused) {
-                 video.play().catch(error => {
-                     console.log("尝试播放失败 (可能需要用户交互)：", error.name);
-                 });
-             }
-             return;
+            console.log("视频时长无效或仍在加载中，等待加载...");
+            logStatus("视频时长未正确获取，等待加载中...");
+            if (video.paused) {
+                video.play().catch(function(error) {
+                    console.log("尝试播放失败 (可能需要用户交互)：", error.name);
+                    logStatus("尝试播放视频失败，可能需要手动点一下播放按钮。");
+                });
+            }
+            return;
         }
 
-        // --- 核心自动化操作 ---
-
-        // 1. 强制设置 2.0 倍速 (直接操作 video 元素)
+        // 自动设置 2.0 倍速
         speed(video);
 
-        // 2. 关闭声音
+        // 关闭声音
         soundClose();
 
-        // 3. 强制播放（如果被暂停）
+        // 强制播放（如果被暂停）
         if (video.paused) {
             console.log("检测到视频暂停，尝试强制播放...");
-            // 使用 play() 方法比模拟点击更可靠
-            video.play().catch(error => {
-                 console.log("视频强制播放失败，可能需要用户交互。错误类型:", error.name);
+            logStatus("检测到视频暂停，尝试继续播放当前章节。");
+
+            video.play().catch(function(error) {
+                console.log("视频强制播放失败，可能需要用户交互。错误类型:", error.name);
+                logStatus("强制播放失败，可能需要你手动点一下播放按钮。");
             });
 
-            // 额外尝试点击播放按钮，作为 play() 的备用方案
             var staNow = document.getElementsByClassName("play-btn-tip")[0];
-            if(staNow && staNow.innerText === "播放"){
-                 staNow.click();
+            if (staNow && staNow.innerText === "播放") {
+                staNow.click();
             }
         }
 
+        // 视频播放进度检查
+        var ratio = c / d;
+        var percentText = (ratio * 100).toFixed(2) + "%";
 
-        // 4. 视频播放进度检查与跳转
-        // 确保进度检查发生在播放操作之后
-        if((c / d) > 0.99){
-            console.log("本节播放完毕，观看百分比：" + (c/d).toFixed(4) * 100 + "%");
-            startNum(++index);
-            console.log("跳转到下一节，下一节编号：" + index);
+        if (ratio > 0.99) {
+            // 防止重复触发同一节的检查
+            if (isCheckingProgress) {
+                return;
+            }
+            isCheckingProgress = true;
+
+            console.log("本节视频已看完，观看百分比：" + percentText + "，准备检查小饼图进度...");
+            logStatus("本节视频已看完（" + percentText + "），正在检查左侧饼图是否已满...");
+            checkProgressAndMaybeGotoNext(video);
         } else {
-             console.log("视频正在播放中... 进度: " + (c/d).toFixed(4) * 100 + "%");
+            console.log("视频正在播放中... 进度: " + percentText);
         }
+    }
+
+    /**
+     * 检查当前章节的小饼图是否满，如果没满就重播当前视频
+     * @param {HTMLVideoElement} video - 当前视频元素
+     */
+    function checkProgressAndMaybeGotoNext(video) {
+        // 给一点时间让页面刷新进度（如有异步更新）
+        setTimeout(function() {
+            lists = document.getElementsByClassName("third");
+
+            var currentList = lists[index];
+            if (!currentList) {
+                console.log("找不到当前章节节点，直接跳到下一节 index =", index + 1);
+                logStatus("找不到当前章节节点，直接跳到下一节 #" + (index + 1) + "。");
+                isCheckingProgress = false;
+                startNum(++index);
+                return;
+            }
+
+            var lis = currentList.getElementsByTagName("li");
+            if (lis.length === 0) {
+                console.log("当前章节下没有 li，直接跳到下一节 index =", index + 1);
+                logStatus("当前章节没有 li 节点，直接跳到下一节 #" + (index + 1) + "。");
+                isCheckingProgress = false;
+                startNum(++index);
+                return;
+            }
+
+            var currentLi = lis[0];
+
+            // 检查是否有满进度的 icon
+            var fullIcon = currentLi.querySelector(".percentFull");
+
+            if (fullIcon) {
+                console.log("检测到当前章节饼图已满，跳转到下一节。index =", index + 1);
+                logStatus("当前章节已被标记为“已完成”，跳转到下一节 #" + (index + 1) + "。");
+                replayCountMap[index] = 0;
+                isCheckingProgress = false;
+                startNum(++index);
+            } else {
+                // 没有 percentFull，说明这节没被认定看完，再播一遍
+                replayCountMap[index] = (replayCountMap[index] || 0) + 1;
+                console.log("当前章节饼图未满，第 " + replayCountMap[index] + " 次重播当前章节 index =", index);
+                logStatus("当前章节饼图未满，第 " + replayCountMap[index] + " 次重播当前章节。");
+
+                // 防止死循环（如该节需要做题等，不只是看视频）
+                if (replayCountMap[index] > 3) {
+                    console.log("本章节重复播放超过 3 次仍未满，可能需要作答/手动操作，强制跳到下一节。");
+                    logStatus("本章节重播超过 3 次仍未完成，可能需要答题/手动操作，强制跳到下一节。");
+                    isCheckingProgress = false;
+                    startNum(++index);
+                    return;
+                }
+
+                if (video) {
+                    video.currentTime = 0;
+                    video.play().catch(function(error) {
+                        console.log("重播当前视频失败，可能需要用户交互，错误类型:", error.name);
+                        logStatus("重播当前视频失败，可能需要你手动点一下播放。");
+                    });
+                    // 重播当前章节后继续用 next() 的定时器检测即可
+                } else {
+                    console.log("重播失败：未找到视频元素，直接尝试下一节。");
+                    logStatus("未找到视频元素，直接跳到下一节 #" + (index + 1) + "。");
+                    startNum(++index);
+                }
+
+                isCheckingProgress = false;
+            }
+        }, 3000);
     }
 
     /**
      * 关闭视频声音 (通过点击 UI 按钮)
      */
-    function soundClose(){
-        // 尝试查找静音图标的类名 (xt_video_player_common_icon_muted 存在则已静音)
+    function soundClose() {
         var mutedIcon = document.getElementsByClassName("xt_video_player_common_icon_muted");
-        if(mutedIcon.length === 0){
-            // 如果没有静音图标，说明当前是播放状态，尝试点击静音按钮
+        if (mutedIcon.length === 0) {
             var muteButton = document.getElementsByClassName("xt_video_player_common_icon")[0];
-            if(muteButton) {
+            if (muteButton) {
                 muteButton.click();
                 console.log("视频声音关闭");
             }
@@ -320,27 +427,19 @@
      * 设置播放速度为2.0 (直接操作 video 元素)
      * @param {HTMLVideoElement} video - 视频DOM元素
      */
-    function speed(video){
-        // 直接设置 HTMLVideoElement 的播放速率属性
+    function speed(video) {
         if (video && video.playbackRate !== 2.0) {
             video.playbackRate = 2.0;
-            console.log("设置播放速度为 2.0 倍 (通过 video.playbackRate)。");
+            console.log("设置播放速度为 2.0 倍。");
         }
     }
 
-
     // --- 脚本启动入口 ---
 
-    /**
-     * 主函数：等待DOM加载完毕后执行主要逻辑
-     */
     function main() {
         console.log("油猴脚本已启动，开始加载操作面板...");
-
-        // 1. 创建并插入操作面板
         createPanel();
-
-        // 2. 填充面板数据，等待 3 秒确保异步加载的章节列表出现
+        logStatus("脚本已载入，正在识别章节列表...");
         setTimeout(populatePanel, 3000);
     }
 
