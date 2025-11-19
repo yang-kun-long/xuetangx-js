@@ -1,7 +1,6 @@
 name: Release Workflow
 
 on:
-  # 监听 push 事件，仅当 push 包含 tag 且 tag 匹配 v* 时触发
   push:
     tags:
       - 'v*' 
@@ -11,12 +10,16 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     
+    # === 关键修复：添加 permissions 块，显式授予写入权限 ===
+    permissions:
+      contents: write # 授予对仓库内容的写入权限，允许创建 Release
+    # =======================================================
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         
       # 步骤 1: 确保文件头部 @version 标签与 Git Tag 匹配 (重要!)
-      # 确保脚本文件名和路径是正确的: userscripts/xuetangx-autolearn.user.js
       - name: Verify Version
         run: |
           TAG_VERSION=${GITHUB_REF_NAME}
@@ -37,14 +40,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # 使用 tag 作为 release 名称
           name: Release ${{ github.ref_name }} 
-          # 使用 tag 作为 release tag
           tag_name: ${{ github.ref_name }} 
-          # 设置为 false，表示这是一个正式发布
           draft: false
           prerelease: false
-          # 附加油猴脚本文件到 release
           files: userscripts/xuetangx-autolearn.user.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
